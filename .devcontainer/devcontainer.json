@@ -1,0 +1,16 @@
+{
+    "name": "Android Development",
+    "image": "mcr.microsoft.com/devcontainers/universal:2",
+    "features": {
+        "ghcr.io/devcontainers/features/sshd:1": "latest"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "kotlin",
+                "vscjava.vscode-java-pack"
+            ]
+        }
+    },
+    "remoteUser": "codespace"
+}
