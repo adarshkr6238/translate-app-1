@@ -1,0 +1,5 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.Theme.TranslateApp1" parent="Theme.Material3.DayNight.NoActionBar">
+    </style>
+    <style name="Theme.TranslateApp1" parent="Base.Theme.TranslateApp1" />
+</resources>
