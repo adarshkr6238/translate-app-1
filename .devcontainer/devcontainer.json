@@ -1,13 +1,4 @@
 {
     "name": "Android Development",
-    "image": "mcr.microsoft.com/devcontainers/universal:2",
-    "customizations": {
-        "vscode": {
-            "extensions": [
-                "kotlin",
-                "vscjava.vscode-java-pack"
-            ]
-        }
-    },
-    "remoteUser": "codespace"
+    "image": "mcr.microsoft.com/devcontainers/universal:2"
 }
