@@ -1,11 +1,10 @@
 {
     "name": "Android Development",
-    "image": "mcr.microsoft.com/devcontainers/universal:2",
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
     "features": {
         "ghcr.io/devcontainers/features/sshd:1": "latest",
         "ghcr.io/devcontainers/features/java:1": {
-            "version": "17",
-            "jdkDistro": "ms"
+            "version": "17"
         },
         "ghcr.io/devcontainers/features/android-sdk:1": {
             "version": "latest"
@@ -20,5 +19,5 @@
         }
     },
     "postCreateCommand": "sdkmanager --update && sdkmanager \"platform-tools\" \"platforms;android-34\" \"build-tools;34.0.0\"",
-    "remoteUser": "codespace"
+    "remoteUser": "vscode"
 }
