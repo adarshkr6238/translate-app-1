@@ -1,5 +1,13 @@
 {
     "name": "Android Development",
     "image": "mcr.microsoft.com/devcontainers/universal:latest",
-    "postCreateCommand": "sudo apt update && sudo apt upgrade -y"
+    "features": {
+        "ghcr.io/devcontainers/features/java:1": {
+            "version": "17"
+        }
+    },
+    "postCreateCommand": "sudo apt-get update && sudo apt-get install -y openjdk-17-jdk wget unzip && mkdir -p $HOME/android-sdk/cmdline-tools && cd $HOME/android-sdk/cmdline-tools && wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip && unzip *.zip && mv cmdline-tools latest && export ANDROID_HOME=$HOME/android-sdk && export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin && yes | sdkmanager --licenses && sdkmanager \"platform-tools\" \"platforms;android-34\" \"build-tools;34.0.0\"",
+    "containerEnv": {
+        "ANDROID_HOME": "/home/codespace/android-sdk"
+    }
 }
