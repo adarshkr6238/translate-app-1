@@ -32,6 +32,7 @@ import com.google.mlkit.nl.translate.TranslatorOptions
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.*
 
 class ScreenCaptureService : Service() {
 
@@ -46,13 +47,14 @@ class ScreenCaptureService : Service() {
     private var screenWidth: Int = 0
     private var screenHeight: Int = 0
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private val languageIdentifier = LanguageIdentification.getClient()
     private val multiTranslationService = MultiTranslationService()
     
-    // Default provider. Could be made configurable via UI.
     private var currentProvider = TranslationProvider.ML_KIT
+    private var isProcessing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -84,6 +86,7 @@ class ScreenCaptureService : Service() {
     }
 
     private fun setupVirtualDisplay() {
+        // Reduced buffer to 2 for memory efficiency
         imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "ScreenCapture",
@@ -102,7 +105,7 @@ class ScreenCaptureService : Service() {
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Screen Capture Service Channel",
-                NotificationManager.IMPORTANCE_DEFAULT
+                NotificationManager.IMPORTANCE_LOW // Reduced noise
             )
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
@@ -112,8 +115,9 @@ class ScreenCaptureService : Service() {
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Translator Active")
-            .setContentText("Screen capture in progress")
+            .setContentText("Tap bubble to translate screen")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
@@ -170,10 +174,11 @@ class ScreenCaptureService : Service() {
         })
 
         bubbleView.setOnClickListener {
-            captureScreen()
+            if (!isProcessing) {
+                captureScreen()
+            }
         }
         
-        // Cycle provider on long click for demonstration
         bubbleView.setOnLongClickListener {
             currentProvider = when(currentProvider) {
                 TranslationProvider.ML_KIT -> TranslationProvider.MY_MEMORY
@@ -191,6 +196,7 @@ class ScreenCaptureService : Service() {
     private fun captureScreen() {
         val image: Image? = imageReader?.acquireLatestImage()
         if (image != null) {
+            isProcessing = true
             val planes = image.planes
             val buffer = planes[0].buffer
             val pixelStride = planes[0].pixelStride
@@ -206,6 +212,7 @@ class ScreenCaptureService : Service() {
             image.close()
 
             val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+            bitmap.recycle() // Optimization: Recycle temp bitmap
             processOCR(croppedBitmap)
         }
     }
@@ -215,15 +222,19 @@ class ScreenCaptureService : Service() {
         val inputImage = InputImage.fromBitmap(bitmap, 0)
         textRecognizer.process(inputImage)
             .addOnSuccessListener { visionText ->
+                bitmap.recycle() // Optimization: Recycle bitmap after OCR input created
                 val text = visionText.text
                 if (text.isNotBlank()) {
                     identifyLanguage(text)
                 } else {
                     updateResultUI("No text found.")
+                    isProcessing = false
                 }
             }
             .addOnFailureListener { e ->
+                bitmap.recycle()
                 updateResultUI("OCR Failed: ${e.message}")
+                isProcessing = false
             }
     }
 
@@ -239,16 +250,19 @@ class ScreenCaptureService : Service() {
                     }
                 } else {
                     updateResultUI("Language unknown.")
+                    isProcessing = false
                 }
             }
             .addOnFailureListener { e ->
                 updateResultUI("LangID Failed: ${e.message}")
+                isProcessing = false
             }
     }
 
     private fun translateTextMLKit(text: String, sourceLang: String) {
         if (sourceLang == "en") {
             updateResultUI(text)
+            isProcessing = false
             return
         }
 
@@ -269,22 +283,27 @@ class ScreenCaptureService : Service() {
                     .addOnSuccessListener { translatedText ->
                         updateResultUI(translatedText)
                         translator.close()
+                        isProcessing = false
                     }
                     .addOnFailureListener { e ->
                         updateResultUI("ML Kit Failed: ${e.message}")
                         translator.close()
+                        isProcessing = false
                     }
             }
             .addOnFailureListener { e ->
                 updateResultUI("Model Download Failed: ${e.message}")
                 translator.close()
+                isProcessing = false
             }
     }
     
     private fun translateTextOnline(text: String, sourceLang: String, provider: TranslationProvider) {
         updateResultUI("Translating (${provider.name})...")
-        multiTranslationService.translate(text, sourceLang, "en", provider) { result ->
+        serviceScope.launch {
+            val result = multiTranslationService.translate(text, sourceLang, "en", provider)
             updateResultUI(result)
+            isProcessing = false
         }
     }
 
@@ -299,6 +318,7 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        serviceScope.cancel()
         virtualDisplay?.release()
         mediaProjection?.stop()
         textRecognizer.close()

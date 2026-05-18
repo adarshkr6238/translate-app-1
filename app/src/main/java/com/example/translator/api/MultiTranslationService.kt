@@ -1,5 +1,7 @@
 package com.example.translator.api
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -14,69 +16,65 @@ enum class TranslationProvider {
 
 class MultiTranslationService {
 
-    fun translate(
+    /**
+     * Translates text using external APIs.
+     * Optimized to use Coroutines instead of manual threads.
+     */
+    suspend fun translate(
         text: String,
         from: String,
         to: String,
-        provider: TranslationProvider,
-        callback: (String) -> Unit
-    ) {
-        if (provider == TranslationProvider.ML_KIT) {
-            // Handled by ScreenCaptureService directly for now
-            return
-        }
+        provider: TranslationProvider
+    ): String = withContext(Dispatchers.IO) {
+        if (provider == TranslationProvider.ML_KIT) return@withContext "Use ML Kit locally"
 
-        Thread {
-            try {
-                val result = when (provider) {
-                    TranslationProvider.MY_MEMORY -> translateMyMemory(text, from, to)
-                    TranslationProvider.LINGVA -> translateLingva(text, from, to)
-                    TranslationProvider.SIMPLY_TRANSLATE -> translateSimplyTranslate(text, from, to)
-                    else -> "Unsupported provider"
-                }
-                callback(result)
-            } catch (e: Exception) {
-                callback("Error: ${e.message}")
+        return@withContext try {
+            when (provider) {
+                TranslationProvider.MY_MEMORY -> translateMyMemory(text, from, to)
+                TranslationProvider.LINGVA -> translateLingva(text, from, to)
+                TranslationProvider.SIMPLY_TRANSLATE -> translateSimplyTranslate(text, from, to)
+                else -> "Unsupported provider"
             }
-        }.start()
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
     }
 
     private fun translateMyMemory(text: String, from: String, to: String): String {
         val encodedText = URLEncoder.encode(text, "UTF-8")
         val url = URL("https://api.mymemory.translated.net/get?q=$encodedText&langpair=$from|$to")
-        val connection = url.openConnection() as HttpURLConnection
-        return try {
-            val response = connection.inputStream.bufferedReader().readText()
-            val json = JSONObject(response)
+        return makeGetRequest(url) { json ->
             json.getJSONObject("responseData").getString("translatedText")
-        } finally {
-            connection.disconnect()
         }
     }
 
     private fun translateLingva(text: String, from: String, to: String): String {
         val encodedText = URLEncoder.encode(text, "UTF-8")
         val url = URL("https://lingva.ml/api/v1/$from/$to/$encodedText")
-        val connection = url.openConnection() as HttpURLConnection
-        return try {
-            val response = connection.inputStream.bufferedReader().readText()
-            val json = JSONObject(response)
+        return makeGetRequest(url) { json ->
             json.getString("translation")
-        } finally {
-            connection.disconnect()
         }
     }
 
     private fun translateSimplyTranslate(text: String, from: String, to: String): String {
         val encodedText = URLEncoder.encode(text, "UTF-8")
-        // SimplyTranslate often uses a GET endpoint for simple queries or POST for JSON
-        // Using a common public instance pattern
         val url = URL("https://simplytranslate.org/api/translate?text=$encodedText&from=$from&to=$to&engine=google")
-        val connection = url.openConnection() as HttpURLConnection
-        return try {
-            val response = connection.inputStream.bufferedReader().readText()
-            val json = JSONObject(response)
+        return makeGetRequest(url) { json ->
             json.getString("translated_text")
+        }
+    }
+
+    private fun makeGetRequest(url: URL, parser: (JSONObject) -> String): String {
+        val connection = url.openConnection() as HttpURLConnection
+        connection.connectTimeout = 5000
+        connection.readTimeout = 5000
+        return try {
+            if (connection.responseCode == 200) {
+                val response = connection.inputStream.bufferedReader().readText()
+                parser(JSONObject(response))
+            } else {
+                "API Error: ${connection.responseCode}"
+            }
         } finally {
             connection.disconnect()
         }
