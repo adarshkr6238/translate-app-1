@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/bubble_root"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@android:color/transparent">
+
+    <ImageView
+        android:id="@+id/bubble_icon"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:src="@android:drawable/ic_menu_send"
+        android:background="@android:color/holo_blue_dark"
+        android:padding="12dp"
+        android:contentDescription="Translator Bubble" />
+
+    <TextView
+        android:id="@+id/txtResult"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:background="#80000000"
+        android:padding="4dp"
+        android:text=""
+        android:textColor="@android:color/white"
+        android:visibility="gone" />
+
+</FrameLayout>
