@@ -11,11 +11,20 @@ android {
         applicationId "com.example.translator"
         minSdk 24
         targetSdk 34
-        versionCode 5
-        versionName "3.0.0"
+        versionCode 6
+        versionName "3.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            signingConfig signingConfigs.release
+            storeFile file("/home/codespace/release.keystore")
+            storePassword "password123"
+            keyAlias "releaseKey"
+            keyPassword "password123"
+        }
+    }
     buildTypes {
         debug {
             minifyEnabled true
@@ -23,6 +32,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         release {
+            signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
