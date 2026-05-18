@@ -22,6 +22,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import androidx.preference.PreferenceManager
 import com.example.translator.api.MultiTranslationService
 import com.example.translator.api.TranslationProvider
 import com.google.mlkit.common.model.DownloadConditions
@@ -54,6 +55,8 @@ class ScreenCaptureService : Service() {
     private val multiTranslationService = MultiTranslationService()
     
     private var currentProvider = TranslationProvider.ML_KIT
+    private var sourceLangSetting = "Auto"
+    private var targetLangSetting = "en"
     private var isProcessing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -66,9 +69,19 @@ class ScreenCaptureService : Service() {
         screenDensity = metrics.densityDpi
         screenWidth = metrics.widthPixels
         screenHeight = metrics.heightPixels
+        
+        loadSettings()
 
         createNotificationChannel()
         startForeground(1, createNotification())
+    }
+
+    private fun loadSettings() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val provStr = prefs.getString("provider", "ML_KIT") ?: "ML_KIT"
+        currentProvider = try { TranslationProvider.valueOf(provStr) } catch(e:Exception){ TranslationProvider.ML_KIT }
+        sourceLangSetting = prefs.getString("sourceLang", "Auto") ?: "Auto"
+        targetLangSetting = prefs.getString("targetLang", "en") ?: "en"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -86,36 +99,27 @@ class ScreenCaptureService : Service() {
     }
 
     private fun setupVirtualDisplay() {
-        // Reduced buffer to 2 for memory efficiency
         imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
         virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            screenWidth,
-            screenHeight,
-            screenDensity,
+            "ScreenCapture", screenWidth, screenHeight, screenDensity,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null,
-            null
+            imageReader?.surface, null, null
         )
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val serviceChannel = NotificationChannel(
-                CHANNEL_ID,
-                "Screen Capture Service Channel",
-                NotificationManager.IMPORTANCE_LOW // Reduced noise
+                CHANNEL_ID, "Screen Capture Service Channel", NotificationManager.IMPORTANCE_LOW
             )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(serviceChannel)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(serviceChannel)
         }
     }
 
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Translator Active")
-            .setContentText("Tap bubble to translate screen")
+            .setContentTitle("Translator Active (${currentProvider.name})")
+            .setContentText("Tap bubble to translate. Source: $sourceLangSetting")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -123,35 +127,23 @@ class ScreenCaptureService : Service() {
 
     private fun setupFloatingBubble() {
         bubbleView = LayoutInflater.from(this).inflate(R.layout.bubble_layout, null)
-
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 100
-            y = 100
+            x = 100; y = 100
         }
 
         bubbleView.setOnTouchListener(object : View.OnTouchListener {
-            private var initialX = 0
-            private var initialY = 0
-            private var initialTouchX = 0f
-            private var initialTouchY = 0f
-
+            private var initialX = 0; private var initialY = 0
+            private var initialTouchX = 0f; private var initialTouchY = 0f
             override fun onTouch(v: View, event: android.view.MotionEvent): Boolean {
                 when (event.action) {
                     android.view.MotionEvent.ACTION_DOWN -> {
-                        initialX = params.x
-                        initialY = params.y
-                        initialTouchX = event.rawX
-                        initialTouchY = event.rawY
+                        initialX = params.x; initialY = params.y
+                        initialTouchX = event.rawX; initialTouchY = event.rawY
                         return true
                     }
                     android.view.MotionEvent.ACTION_MOVE -> {
@@ -161,9 +153,7 @@ class ScreenCaptureService : Service() {
                         return true
                     }
                     android.view.MotionEvent.ACTION_UP -> {
-                        val diffX = event.rawX - initialTouchX
-                        val diffY = event.rawY - initialTouchY
-                        if (kotlin.math.abs(diffX) < 10 && kotlin.math.abs(diffY) < 10) {
+                        if (kotlin.math.abs(event.rawX - initialTouchX) < 10 && kotlin.math.abs(event.rawY - initialTouchY) < 10) {
                             v.performClick()
                         }
                         return true
@@ -173,23 +163,7 @@ class ScreenCaptureService : Service() {
             }
         })
 
-        bubbleView.setOnClickListener {
-            if (!isProcessing) {
-                captureScreen()
-            }
-        }
-        
-        bubbleView.setOnLongClickListener {
-            currentProvider = when(currentProvider) {
-                TranslationProvider.ML_KIT -> TranslationProvider.MY_MEMORY
-                TranslationProvider.MY_MEMORY -> TranslationProvider.LINGVA
-                TranslationProvider.LINGVA -> TranslationProvider.SIMPLY_TRANSLATE
-                TranslationProvider.SIMPLY_TRANSLATE -> TranslationProvider.ML_KIT
-            }
-            updateResultUI("Provider: ${currentProvider.name}")
-            true
-        }
-
+        bubbleView.setOnClickListener { if (!isProcessing) captureScreen() }
         windowManager.addView(bubbleView, params)
     }
 
@@ -200,19 +174,12 @@ class ScreenCaptureService : Service() {
             val planes = image.planes
             val buffer = planes[0].buffer
             val pixelStride = planes[0].pixelStride
-            val rowStride = planes[0].rowStride
-            val rowPadding = rowStride - pixelStride * screenWidth
-
-            val bitmap = Bitmap.createBitmap(
-                screenWidth + rowPadding / pixelStride,
-                screenHeight,
-                Bitmap.Config.ARGB_8888
-            )
+            val rowPadding = planes[0].rowStride - pixelStride * screenWidth
+            val bitmap = Bitmap.createBitmap(screenWidth + rowPadding / pixelStride, screenHeight, Bitmap.Config.ARGB_8888)
             bitmap.copyPixelsFromBuffer(buffer)
             image.close()
-
             val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
-            bitmap.recycle() // Optimization: Recycle temp bitmap
+            bitmap.recycle()
             processOCR(croppedBitmap)
         }
     }
@@ -222,19 +189,23 @@ class ScreenCaptureService : Service() {
         val inputImage = InputImage.fromBitmap(bitmap, 0)
         textRecognizer.process(inputImage)
             .addOnSuccessListener { visionText ->
-                bitmap.recycle() // Optimization: Recycle bitmap after OCR input created
-                val text = visionText.text
+                bitmap.recycle()
+                // Process text block by block to handle mixed languages better if Auto, or just combine if forced
+                val text = visionText.textBlocks.joinToString("\n") { it.text }
                 if (text.isNotBlank()) {
-                    identifyLanguage(text)
+                    if (sourceLangSetting != "Auto") {
+                        // Force source language (Fixes multi-lang confusion)
+                        translateBasedOnProvider(text, sourceLangSetting)
+                    } else {
+                        identifyLanguage(text)
+                    }
                 } else {
                     updateResultUI("No text found.")
                     isProcessing = false
                 }
             }
             .addOnFailureListener { e ->
-                bitmap.recycle()
-                updateResultUI("OCR Failed: ${e.message}")
-                isProcessing = false
+                bitmap.recycle(); updateResultUI("OCR Failed: ${e.message}"); isProcessing = false
             }
     }
 
@@ -243,65 +214,55 @@ class ScreenCaptureService : Service() {
         languageIdentifier.identifyLanguage(text)
             .addOnSuccessListener { languageCode ->
                 if (languageCode != "und") {
-                    if (currentProvider == TranslationProvider.ML_KIT) {
-                        translateTextMLKit(text, languageCode)
-                    } else {
-                        translateTextOnline(text, languageCode, currentProvider)
-                    }
+                    translateBasedOnProvider(text, languageCode)
                 } else {
-                    updateResultUI("Language unknown.")
+                    updateResultUI("Language unknown. Try forcing Source Lang.")
                     isProcessing = false
                 }
             }
             .addOnFailureListener { e ->
-                updateResultUI("LangID Failed: ${e.message}")
-                isProcessing = false
+                updateResultUI("LangID Failed: ${e.message}"); isProcessing = false
             }
+    }
+    
+    private fun translateBasedOnProvider(text: String, sourceLang: String) {
+        if (currentProvider == TranslationProvider.ML_KIT) {
+            translateTextMLKit(text, sourceLang)
+        } else {
+            translateTextOnline(text, sourceLang, currentProvider)
+        }
     }
 
     private fun translateTextMLKit(text: String, sourceLang: String) {
-        if (sourceLang == "en") {
-            updateResultUI(text)
-            isProcessing = false
-            return
+        if (sourceLang == targetLangSetting) {
+            updateResultUI(text); isProcessing = false; return
         }
-
         updateResultUI("Translating (ML Kit)...")
-        val options = TranslatorOptions.Builder()
-            .setSourceLanguage(TranslateLanguage.fromLanguageTag(sourceLang) ?: TranslateLanguage.ENGLISH)
-            .setTargetLanguage(TranslateLanguage.ENGLISH)
-            .build()
+        val src = TranslateLanguage.fromLanguageTag(sourceLang) ?: TranslateLanguage.ENGLISH
+        val tgt = TranslateLanguage.fromLanguageTag(targetLangSetting) ?: TranslateLanguage.ENGLISH
+        val options = TranslatorOptions.Builder().setSourceLanguage(src).setTargetLanguage(tgt).build()
         val translator = Translation.getClient(options)
-        
-        val conditions = DownloadConditions.Builder()
-            .requireWifi()
-            .build()
+        val conditions = DownloadConditions.Builder().requireWifi().build()
             
         translator.downloadModelIfNeeded(conditions)
             .addOnSuccessListener {
                 translator.translate(text)
                     .addOnSuccessListener { translatedText ->
-                        updateResultUI(translatedText)
-                        translator.close()
-                        isProcessing = false
+                        updateResultUI(translatedText); translator.close(); isProcessing = false
                     }
                     .addOnFailureListener { e ->
-                        updateResultUI("ML Kit Failed: ${e.message}")
-                        translator.close()
-                        isProcessing = false
+                        updateResultUI("ML Kit Failed: ${e.message}"); translator.close(); isProcessing = false
                     }
             }
             .addOnFailureListener { e ->
-                updateResultUI("Model Download Failed: ${e.message}")
-                translator.close()
-                isProcessing = false
+                updateResultUI("Model Download Failed: ${e.message}"); translator.close(); isProcessing = false
             }
     }
     
     private fun translateTextOnline(text: String, sourceLang: String, provider: TranslationProvider) {
         updateResultUI("Translating (${provider.name})...")
         serviceScope.launch {
-            val result = multiTranslationService.translate(text, sourceLang, "en", provider)
+            val result = multiTranslationService.translate(text, sourceLang, targetLangSetting, provider)
             updateResultUI(result)
             isProcessing = false
         }
@@ -318,13 +279,8 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        serviceScope.cancel()
-        virtualDisplay?.release()
-        mediaProjection?.stop()
-        textRecognizer.close()
-        languageIdentifier.close()
-        if (::bubbleView.isInitialized) {
-            windowManager.removeView(bubbleView)
-        }
+        serviceScope.cancel(); virtualDisplay?.release(); mediaProjection?.stop()
+        textRecognizer.close(); languageIdentifier.close()
+        if (::bubbleView.isInitialized) windowManager.removeView(bubbleView)
     }
 }
