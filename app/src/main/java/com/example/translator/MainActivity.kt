@@ -6,20 +6,15 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
-import com.example.translator.api.TranslationProvider
 import com.example.translator.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var projectionManager: MediaProjectionManager
-
-    private val providers = TranslationProvider.values().map { it.name }
-    private val languages = listOf("Auto", "en", "es", "fr", "de", "it", "ja", "ko", "zh", "ru")
 
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -35,7 +30,6 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            saveSettings()
             startCaptureService(result.resultCode, result.data!!)
         }
     }
@@ -47,40 +41,15 @@ class MainActivity : AppCompatActivity() {
 
         projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
-        setupSpinners()
-        loadSettings()
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        binding.switchRegionMode.isChecked = prefs.getBoolean("regionMode", false)
+        
+        binding.switchRegionMode.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("regionMode", isChecked).apply()
+        }
 
         binding.btnStart.setOnClickListener {
             checkPermissionsAndStart()
-        }
-    }
-
-    private fun setupSpinners() {
-        val providerAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, providers)
-        binding.spinnerProvider.setAdapter(providerAdapter)
-
-        val langAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, languages)
-        binding.spinnerSourceLang.setAdapter(langAdapter)
-        
-        val targetLangs = languages.subList(1, languages.size)
-        val targetAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, targetLangs)
-        binding.spinnerTargetLang.setAdapter(targetAdapter)
-    }
-
-    private fun loadSettings() {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        binding.spinnerProvider.setText(prefs.getString("provider", TranslationProvider.ML_KIT.name), false)
-        binding.spinnerSourceLang.setText(prefs.getString("sourceLang", "Auto"), false)
-        binding.spinnerTargetLang.setText(prefs.getString("targetLang", "en"), false)
-    }
-
-    private fun saveSettings() {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        prefs.edit().apply {
-            putString("provider", binding.spinnerProvider.text.toString())
-            putString("sourceLang", binding.spinnerSourceLang.text.toString())
-            putString("targetLang", binding.spinnerTargetLang.text.toString())
-            apply()
         }
     }
 
@@ -106,6 +75,6 @@ class MainActivity : AppCompatActivity() {
             putExtra("DATA", data)
         }
         startForegroundService(intent)
-        finish() // Close UI when bubble starts
+        finish()
     }
 }

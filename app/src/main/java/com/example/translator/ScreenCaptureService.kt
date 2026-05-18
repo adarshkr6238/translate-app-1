@@ -18,6 +18,7 @@ import android.os.Looper
 import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
@@ -34,11 +35,13 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.*
+import kotlin.math.abs
 
 class ScreenCaptureService : Service() {
 
     private lateinit var windowManager: WindowManager
     private lateinit var bubbleView: View
+    private var selectionBoxView: View? = null
     private val CHANNEL_ID = "ScreenCaptureServiceChannel"
 
     private var mediaProjection: MediaProjection? = null
@@ -57,6 +60,7 @@ class ScreenCaptureService : Service() {
     private var currentProvider = TranslationProvider.ML_KIT
     private var sourceLangSetting = "Auto"
     private var targetLangSetting = "en"
+    private var regionMode = false
     private var isProcessing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -82,6 +86,7 @@ class ScreenCaptureService : Service() {
         currentProvider = try { TranslationProvider.valueOf(provStr) } catch(e:Exception){ TranslationProvider.ML_KIT }
         sourceLangSetting = prefs.getString("sourceLang", "Auto") ?: "Auto"
         targetLangSetting = prefs.getString("targetLang", "en") ?: "en"
+        regionMode = prefs.getBoolean("regionMode", false)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -95,6 +100,9 @@ class ScreenCaptureService : Service() {
         }
 
         setupFloatingBubble()
+        if (regionMode) {
+            setupSelectionBox()
+        }
         return START_NOT_STICKY
     }
 
@@ -119,7 +127,7 @@ class ScreenCaptureService : Service() {
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Translator Active (${currentProvider.name})")
-            .setContentText("Tap bubble to translate. Source: $sourceLangSetting")
+            .setContentText("Tap bubble to translate. Region Mode: $regionMode")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -139,21 +147,21 @@ class ScreenCaptureService : Service() {
         bubbleView.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0; private var initialY = 0
             private var initialTouchX = 0f; private var initialTouchY = 0f
-            override fun onTouch(v: View, event: android.view.MotionEvent): Boolean {
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.action) {
-                    android.view.MotionEvent.ACTION_DOWN -> {
+                    MotionEvent.ACTION_DOWN -> {
                         initialX = params.x; initialY = params.y
                         initialTouchX = event.rawX; initialTouchY = event.rawY
                         return true
                     }
-                    android.view.MotionEvent.ACTION_MOVE -> {
+                    MotionEvent.ACTION_MOVE -> {
                         params.x = initialX + (event.rawX - initialTouchX).toInt()
                         params.y = initialY + (event.rawY - initialTouchY).toInt()
                         windowManager.updateViewLayout(bubbleView, params)
                         return true
                     }
-                    android.view.MotionEvent.ACTION_UP -> {
-                        if (kotlin.math.abs(event.rawX - initialTouchX) < 10 && kotlin.math.abs(event.rawY - initialTouchY) < 10) {
+                    MotionEvent.ACTION_UP -> {
+                        if (abs(event.rawX - initialTouchX) < 10 && abs(event.rawY - initialTouchY) < 10) {
                             v.performClick()
                         }
                         return true
@@ -163,8 +171,77 @@ class ScreenCaptureService : Service() {
             }
         })
 
-        bubbleView.setOnClickListener { if (!isProcessing) captureScreen() }
+        bubbleView.setOnClickListener {
+            val txtResult = bubbleView.findViewById<TextView>(R.id.txtResult)
+            if (txtResult.visibility == View.VISIBLE) {
+                txtResult.visibility = View.GONE
+                txtResult.text = ""
+            } else {
+                if (!isProcessing) captureScreen()
+            }
+        }
         windowManager.addView(bubbleView, params)
+    }
+
+    private fun setupSelectionBox() {
+        selectionBoxView = LayoutInflater.from(this).inflate(R.layout.selection_box_layout, null)
+        val params = WindowManager.LayoutParams(
+            200, 200,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = screenWidth / 4; y = screenHeight / 4
+        }
+
+        val selectionBox = selectionBoxView!!.findViewById<View>(R.id.selection_box)
+        val resizeHandle = selectionBoxView!!.findViewById<View>(R.id.resize_handle)
+
+        selectionBox.setOnTouchListener(object : View.OnTouchListener {
+            private var initialX = 0; private var initialY = 0
+            private var initialTouchX = 0f; private var initialTouchY = 0f
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initialX = params.x; initialY = params.y
+                        initialTouchX = event.rawX; initialTouchY = event.rawY
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        params.x = initialX + (event.rawX - initialTouchX).toInt()
+                        params.y = initialY + (event.rawY - initialTouchY).toInt()
+                        windowManager.updateViewLayout(selectionBoxView, params)
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        resizeHandle.setOnTouchListener(object : View.OnTouchListener {
+            private var initialWidth = 0; private var initialHeight = 0
+            private var initialTouchX = 0f; private var initialTouchY = 0f
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initialWidth = params.width; initialHeight = params.height
+                        initialTouchX = event.rawX; initialTouchY = event.rawY
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        params.width = (initialWidth + (event.rawX - initialTouchX).toInt()).coerceAtLeast(100)
+                        params.height = (initialHeight + (event.rawY - initialTouchY).toInt()).coerceAtLeast(100)
+                        selectionBox.layoutParams.width = params.width
+                        selectionBox.layoutParams.height = params.height
+                        windowManager.updateViewLayout(selectionBoxView, params)
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        windowManager.addView(selectionBoxView, params)
     }
 
     private fun captureScreen() {
@@ -178,9 +255,22 @@ class ScreenCaptureService : Service() {
             val bitmap = Bitmap.createBitmap(screenWidth + rowPadding / pixelStride, screenHeight, Bitmap.Config.ARGB_8888)
             bitmap.copyPixelsFromBuffer(buffer)
             image.close()
-            val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+            
+            var finalBitmap = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
             bitmap.recycle()
-            processOCR(croppedBitmap)
+
+            if (regionMode && selectionBoxView != null) {
+                val params = selectionBoxView!!.layoutParams as WindowManager.LayoutParams
+                val x = params.x.coerceIn(0, screenWidth - 100)
+                val y = params.y.coerceIn(0, screenHeight - 100)
+                val w = params.width.coerceAtMost(screenWidth - x)
+                val h = params.height.coerceAtMost(screenHeight - y)
+                val regionBitmap = Bitmap.createBitmap(finalBitmap, x, y, w, h)
+                finalBitmap.recycle()
+                finalBitmap = regionBitmap
+            }
+
+            processOCR(finalBitmap)
         }
     }
 
@@ -190,11 +280,9 @@ class ScreenCaptureService : Service() {
         textRecognizer.process(inputImage)
             .addOnSuccessListener { visionText ->
                 bitmap.recycle()
-                // Process text block by block to handle mixed languages better if Auto, or just combine if forced
                 val text = visionText.textBlocks.joinToString("\n") { it.text }
                 if (text.isNotBlank()) {
                     if (sourceLangSetting != "Auto") {
-                        // Force source language (Fixes multi-lang confusion)
                         translateBasedOnProvider(text, sourceLangSetting)
                     } else {
                         identifyLanguage(text)
@@ -282,5 +370,6 @@ class ScreenCaptureService : Service() {
         serviceScope.cancel(); virtualDisplay?.release(); mediaProjection?.stop()
         textRecognizer.close(); languageIdentifier.close()
         if (::bubbleView.isInitialized) windowManager.removeView(bubbleView)
+        if (selectionBoxView != null) windowManager.removeView(selectionBoxView)
     }
 }
