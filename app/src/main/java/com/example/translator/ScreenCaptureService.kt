@@ -22,6 +22,8 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import com.example.translator.api.MultiTranslationService
+import com.example.translator.api.TranslationProvider
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.nl.translate.TranslateLanguage
@@ -47,6 +49,10 @@ class ScreenCaptureService : Service() {
 
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private val languageIdentifier = LanguageIdentification.getClient()
+    private val multiTranslationService = MultiTranslationService()
+    
+    // Default provider. Could be made configurable via UI.
+    private var currentProvider = TranslationProvider.ML_KIT
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -166,6 +172,18 @@ class ScreenCaptureService : Service() {
         bubbleView.setOnClickListener {
             captureScreen()
         }
+        
+        // Cycle provider on long click for demonstration
+        bubbleView.setOnLongClickListener {
+            currentProvider = when(currentProvider) {
+                TranslationProvider.ML_KIT -> TranslationProvider.MY_MEMORY
+                TranslationProvider.MY_MEMORY -> TranslationProvider.LINGVA
+                TranslationProvider.LINGVA -> TranslationProvider.SIMPLY_TRANSLATE
+                TranslationProvider.SIMPLY_TRANSLATE -> TranslationProvider.ML_KIT
+            }
+            updateResultUI("Provider: ${currentProvider.name}")
+            true
+        }
 
         windowManager.addView(bubbleView, params)
     }
@@ -214,7 +232,11 @@ class ScreenCaptureService : Service() {
         languageIdentifier.identifyLanguage(text)
             .addOnSuccessListener { languageCode ->
                 if (languageCode != "und") {
-                    translateText(text, languageCode)
+                    if (currentProvider == TranslationProvider.ML_KIT) {
+                        translateTextMLKit(text, languageCode)
+                    } else {
+                        translateTextOnline(text, languageCode, currentProvider)
+                    }
                 } else {
                     updateResultUI("Language unknown.")
                 }
@@ -224,13 +246,13 @@ class ScreenCaptureService : Service() {
             }
     }
 
-    private fun translateText(text: String, sourceLang: String) {
+    private fun translateTextMLKit(text: String, sourceLang: String) {
         if (sourceLang == "en") {
             updateResultUI(text)
             return
         }
 
-        updateResultUI("Translating...")
+        updateResultUI("Translating (ML Kit)...")
         val options = TranslatorOptions.Builder()
             .setSourceLanguage(TranslateLanguage.fromLanguageTag(sourceLang) ?: TranslateLanguage.ENGLISH)
             .setTargetLanguage(TranslateLanguage.ENGLISH)
@@ -249,7 +271,7 @@ class ScreenCaptureService : Service() {
                         translator.close()
                     }
                     .addOnFailureListener { e ->
-                        updateResultUI("Translation Failed: ${e.message}")
+                        updateResultUI("ML Kit Failed: ${e.message}")
                         translator.close()
                     }
             }
@@ -257,6 +279,13 @@ class ScreenCaptureService : Service() {
                 updateResultUI("Model Download Failed: ${e.message}")
                 translator.close()
             }
+    }
+    
+    private fun translateTextOnline(text: String, sourceLang: String, provider: TranslationProvider) {
+        updateResultUI("Translating (${provider.name})...")
+        multiTranslationService.translate(text, sourceLang, "en", provider) { result ->
+            updateResultUI(result)
+        }
     }
 
     private fun updateResultUI(result: String) {
