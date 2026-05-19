@@ -178,6 +178,22 @@ class ScreenCaptureService : Service() {
             }
         }
 
+        bubbleView.setOnLongClickListener {
+            currentProvider = when(currentProvider) {
+                TranslationProvider.GOOGLE_FREE -> TranslationProvider.MY_MEMORY
+                TranslationProvider.MY_MEMORY -> TranslationProvider.LINGVA
+                TranslationProvider.LINGVA -> TranslationProvider.SIMPLY_TRANSLATE
+                TranslationProvider.SIMPLY_TRANSLATE -> TranslationProvider.LIBRE_TRANSLATE
+                TranslationProvider.LIBRE_TRANSLATE -> TranslationProvider.GOOGLE_FREE
+            }
+            // Save to preferences
+            PreferenceManager.getDefaultSharedPreferences(this).edit().putString("provider", currentProvider.name).apply()
+            updateResultUI("Provider: ${currentProvider.name}")
+            // Update notification
+            startForeground(1, createNotification())
+            true
+        }
+
         bubbleView.findViewById<View>(R.id.btn_close_result).setOnClickListener {
             bubbleView.findViewById<View>(R.id.result_container).visibility = View.GONE
             bubbleView.findViewById<TextView>(R.id.txtResult).text = ""
