@@ -26,7 +26,6 @@ import androidx.core.app.NotificationCompat
 import androidx.preference.PreferenceManager
 import com.example.translator.api.MultiTranslationService
 import com.example.translator.api.TranslationProvider
-import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
