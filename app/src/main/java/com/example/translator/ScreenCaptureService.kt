@@ -26,11 +26,7 @@ import androidx.core.app.NotificationCompat
 import androidx.preference.PreferenceManager
 import com.example.translator.api.MultiTranslationService
 import com.example.translator.api.TranslationProvider
-import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.languageid.LanguageIdentification
-import com.google.mlkit.nl.translate.TranslateLanguage
-import com.google.mlkit.nl.translate.Translation
-import com.google.mlkit.nl.translate.TranslatorOptions
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -57,7 +53,7 @@ class ScreenCaptureService : Service() {
     private val languageIdentifier = LanguageIdentification.getClient()
     private val multiTranslationService = MultiTranslationService()
     
-    private var currentProvider = TranslationProvider.ML_KIT
+    private var currentProvider = TranslationProvider.GOOGLE_FREE
     private var sourceLangSetting = "Auto"
     private var targetLangSetting = "en"
     private var regionMode = false
@@ -82,8 +78,8 @@ class ScreenCaptureService : Service() {
 
     private fun loadSettings() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val provStr = prefs.getString("provider", "ML_KIT") ?: "ML_KIT"
-        currentProvider = try { TranslationProvider.valueOf(provStr) } catch(e:Exception){ TranslationProvider.ML_KIT }
+        val provStr = prefs.getString("provider", "GOOGLE_FREE") ?: "GOOGLE_FREE"
+        currentProvider = try { TranslationProvider.valueOf(provStr) } catch(e:Exception){ TranslationProvider.GOOGLE_FREE }
         sourceLangSetting = prefs.getString("sourceLang", "Auto") ?: "Auto"
         targetLangSetting = prefs.getString("targetLang", "en") ?: "en"
         regionMode = prefs.getBoolean("regionMode", false)
@@ -334,39 +330,9 @@ class ScreenCaptureService : Service() {
     }
     
     private fun translateBasedOnProvider(text: String, sourceLang: String) {
-        if (currentProvider == TranslationProvider.ML_KIT) {
-            translateTextMLKit(text, sourceLang)
-        } else {
-            translateTextOnline(text, sourceLang, currentProvider)
-        }
+        translateTextOnline(text, sourceLang, currentProvider)
     }
 
-    private fun translateTextMLKit(text: String, sourceLang: String) {
-        if (sourceLang == targetLangSetting) {
-            updateResultUI(text); isProcessing = false; return
-        }
-        updateResultUI("Translating (ML Kit)...")
-        val src = TranslateLanguage.fromLanguageTag(sourceLang) ?: TranslateLanguage.ENGLISH
-        val tgt = TranslateLanguage.fromLanguageTag(targetLangSetting) ?: TranslateLanguage.ENGLISH
-        val options = TranslatorOptions.Builder().setSourceLanguage(src).setTargetLanguage(tgt).build()
-        val translator = Translation.getClient(options)
-        val conditions = DownloadConditions.Builder().requireWifi().build()
-            
-        translator.downloadModelIfNeeded(conditions)
-            .addOnSuccessListener {
-                translator.translate(text)
-                    .addOnSuccessListener { translatedText ->
-                        updateResultUI(translatedText); translator.close(); isProcessing = false
-                    }
-                    .addOnFailureListener { e ->
-                        updateResultUI("ML Kit Failed: ${e.message}"); translator.close(); isProcessing = false
-                    }
-            }
-            .addOnFailureListener { e ->
-                updateResultUI("Model Download Failed: ${e.message}"); translator.close(); isProcessing = false
-            }
-    }
-    
     private fun translateTextOnline(text: String, sourceLang: String, provider: TranslationProvider) {
         updateResultUI("Translating (${provider.name})...")
         serviceScope.launch {

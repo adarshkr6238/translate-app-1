@@ -8,10 +8,11 @@ import java.net.URL
 import java.net.URLEncoder
 
 enum class TranslationProvider {
-    ML_KIT,
+    GOOGLE_FREE,
     MY_MEMORY,
     LINGVA,
-    SIMPLY_TRANSLATE
+    SIMPLY_TRANSLATE,
+    LIBRE_TRANSLATE
 }
 
 class MultiTranslationService {
@@ -26,17 +27,39 @@ class MultiTranslationService {
         to: String,
         provider: TranslationProvider
     ): String = withContext(Dispatchers.IO) {
-        if (provider == TranslationProvider.ML_KIT) return@withContext "Use ML Kit locally"
-
         return@withContext try {
             when (provider) {
+                TranslationProvider.GOOGLE_FREE -> translateGoogleFree(text, from, to)
                 TranslationProvider.MY_MEMORY -> translateMyMemory(text, from, to)
                 TranslationProvider.LINGVA -> translateLingva(text, from, to)
                 TranslationProvider.SIMPLY_TRANSLATE -> translateSimplyTranslate(text, from, to)
+                TranslationProvider.LIBRE_TRANSLATE -> translateLibre(text, from, to)
                 else -> "Unsupported provider"
             }
         } catch (e: Exception) {
             "Error: ${e.message}"
+        }
+    }
+
+    private fun translateGoogleFree(text: String, from: String, to: String): String {
+        val encodedText = URLEncoder.encode(text, "UTF-8")
+        val url = URL("https://translate.googleapis.com/translate_a/single?client=gtx&sl=$from&tl=$to&dt=t&q=$encodedText")
+        val connection = url.openConnection() as HttpURLConnection
+        return try {
+            if (connection.responseCode == 200) {
+                val response = connection.inputStream.bufferedReader().readText()
+                val jsonArray = org.json.JSONArray(response)
+                val sentences = jsonArray.getJSONArray(0)
+                val result = StringBuilder()
+                for (i in 0 until sentences.length()) {
+                    result.append(sentences.getJSONArray(i).getString(0))
+                }
+                result.toString()
+            } else {
+                "Google API Error: ${connection.responseCode}"
+            }
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -61,6 +84,33 @@ class MultiTranslationService {
         val url = URL("https://simplytranslate.org/api/translate?text=$encodedText&from=$from&to=$to&engine=google")
         return makeGetRequest(url) { json ->
             json.getString("translated_text")
+        }
+    }
+
+    private fun translateLibre(text: String, from: String, to: String): String {
+        val url = URL("https://libretranslate.de/translate")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.doOutput = true
+
+        val body = JSONObject()
+        body.put("q", text)
+        body.put("source", from)
+        body.put("target", to)
+        body.put("format", "text")
+
+        connection.outputStream.use { it.write(body.toString().toByteArray()) }
+
+        return try {
+            if (connection.responseCode == 200) {
+                val response = connection.inputStream.bufferedReader().readText()
+                JSONObject(response).getString("translatedText")
+            } else {
+                "Libre API Error: ${connection.responseCode}"
+            }
+        } finally {
+            connection.disconnect()
         }
     }
 
