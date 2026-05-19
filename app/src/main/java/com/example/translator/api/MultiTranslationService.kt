@@ -18,8 +18,7 @@ enum class TranslationProvider {
 class MultiTranslationService {
 
     /**
-     * Translates text using external APIs.
-     * Optimized to use Coroutines instead of manual threads.
+     * Translates text using external APIs with automatic fallback.
      */
     suspend fun translate(
         text: String,
@@ -27,23 +26,36 @@ class MultiTranslationService {
         to: String,
         provider: TranslationProvider
     ): String = withContext(Dispatchers.IO) {
-        return@withContext try {
-            when (provider) {
-                TranslationProvider.GOOGLE_FREE -> translateGoogleFree(text, from, to)
-                TranslationProvider.MY_MEMORY -> translateMyMemory(text, from, to)
-                TranslationProvider.LINGVA -> translateLingva(text, from, to)
-                TranslationProvider.SIMPLY_TRANSLATE -> translateSimplyTranslate(text, from, to)
-                TranslationProvider.LIBRE_TRANSLATE -> translateLibre(text, from, to)
-                else -> "Unsupported provider"
+        val providers = TranslationProvider.values().toMutableList()
+        // Move selected provider to front
+        providers.remove(provider)
+        providers.add(0, provider)
+
+        var lastError = ""
+        for (current in providers) {
+            try {
+                val result = when (current) {
+                    TranslationProvider.GOOGLE_FREE -> translateGoogleFree(text, from, to)
+                    TranslationProvider.MY_MEMORY -> translateMyMemory(text, from, to)
+                    TranslationProvider.LINGVA -> translateLingva(text, from, to)
+                    TranslationProvider.SIMPLY_TRANSLATE -> translateSimplyTranslate(text, from, to)
+                    TranslationProvider.LIBRE_TRANSLATE -> translateLibre(text, from, to)
+                }
+                if (!result.startsWith("Error:") && !result.contains("API Error: 429")) {
+                    return@withContext result
+                }
+                lastError = result
+            } catch (e: Exception) {
+                lastError = "Error (${current.name}): ${e.message}"
             }
-        } catch (e: Exception) {
-            "Error: ${e.message}"
         }
+        return@withContext "All providers failed. Last error: $lastError"
     }
 
     private fun translateGoogleFree(text: String, from: String, to: String): String {
+        val src = if (from.equals("auto", true)) "auto" else from
         val encodedText = URLEncoder.encode(text, "UTF-8")
-        val url = URL("https://translate.googleapis.com/translate_a/single?client=gtx&sl=$from&tl=$to&dt=t&q=$encodedText")
+        val url = URL("https://translate.googleapis.com/translate_a/single?client=gtx&sl=$src&tl=$to&dt=t&q=$encodedText")
         val connection = url.openConnection() as HttpURLConnection
         return try {
             if (connection.responseCode == 200) {
@@ -56,7 +68,7 @@ class MultiTranslationService {
                 }
                 result.toString()
             } else {
-                "Google API Error: ${connection.responseCode}"
+                "API Error: ${connection.responseCode} (Google)"
             }
         } finally {
             connection.disconnect()
@@ -73,22 +85,25 @@ class MultiTranslationService {
     }
 
     private fun translateLingva(text: String, from: String, to: String): String {
+        val src = if (from.equals("auto", true)) "auto" else from
         val encodedText = URLEncoder.encode(text, "UTF-8")
-        val url = URL("https://lingva.ml/api/v1/$from/$to/$encodedText")
+        val url = URL("https://lingva.ml/api/v1/$src/$to/$encodedText")
         return makeGetRequest(url) { json ->
             json.getString("translation")
         }
     }
 
     private fun translateSimplyTranslate(text: String, from: String, to: String): String {
+        val src = if (from.equals("auto", true)) "auto" else from
         val encodedText = URLEncoder.encode(text, "UTF-8")
-        val url = URL("https://simplytranslate.org/api/translate?text=$encodedText&from=$from&to=$to&engine=google")
+        val url = URL("https://simplytranslate.org/api/translate?text=$encodedText&from=$src&to=$to&engine=google")
         return makeGetRequest(url) { json ->
             json.getString("translated_text")
         }
     }
 
     private fun translateLibre(text: String, from: String, to: String): String {
+        val src = if (from.equals("auto", true)) "auto" else from
         val url = URL("https://libretranslate.de/translate")
         val connection = url.openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
@@ -97,7 +112,7 @@ class MultiTranslationService {
 
         val body = JSONObject()
         body.put("q", text)
-        body.put("source", from)
+        body.put("source", src)
         body.put("target", to)
         body.put("format", "text")
 
@@ -108,7 +123,7 @@ class MultiTranslationService {
                 val response = connection.inputStream.bufferedReader().readText()
                 JSONObject(response).getString("translatedText")
             } else {
-                "Libre API Error: ${connection.responseCode}"
+                "API Error: ${connection.responseCode} (Libre)"
             }
         } finally {
             connection.disconnect()

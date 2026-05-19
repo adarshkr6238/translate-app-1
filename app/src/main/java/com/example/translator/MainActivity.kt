@@ -43,10 +43,19 @@ class MainActivity : AppCompatActivity() {
 
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         binding.switchRegionMode.isChecked = prefs.getBoolean("regionMode", false)
+        binding.seekBarTransparency.progress = prefs.getInt("transparency", 200)
         
         binding.switchRegionMode.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean("regionMode", isChecked).apply()
         }
+
+        binding.seekBarTransparency.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                prefs.edit().putInt("transparency", progress).apply()
+            }
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+        })
 
         binding.btnStart.setOnClickListener {
             checkPermissionsAndStart()

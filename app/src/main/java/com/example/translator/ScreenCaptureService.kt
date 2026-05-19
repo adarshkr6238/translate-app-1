@@ -55,6 +55,7 @@ class ScreenCaptureService : Service() {
     private var sourceLangSetting = "auto"
     private var targetLangSetting = "en"
     private var regionMode = false
+    private var transparency = 200
     private var isProcessing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -81,8 +82,8 @@ class ScreenCaptureService : Service() {
         sourceLangSetting = prefs.getString("sourceLang", "auto") ?: "auto"
         targetLangSetting = prefs.getString("targetLang", "en") ?: "en"
         regionMode = prefs.getBoolean("regionMode", false)
+        transparency = prefs.getInt("transparency", 200)
     }
-
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val resultCode = intent?.getIntExtra("RESULT_CODE", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
@@ -132,6 +133,10 @@ class ScreenCaptureService : Service() {
         if (::bubbleView.isInitialized && bubbleView.parent != null) return
 
         bubbleView = LayoutInflater.from(this).inflate(R.layout.bubble_layout, null)
+        
+        // Apply transparency
+        bubbleView.findViewById<View>(R.id.bubble_icon).alpha = transparency / 255f
+        
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
@@ -197,6 +202,7 @@ class ScreenCaptureService : Service() {
             bubbleView.findViewById<View>(R.id.result_container).visibility = View.GONE
             bubbleView.findViewById<TextView>(R.id.txtResult).text = ""
         }
+
         windowManager.addView(bubbleView, params)
     }
 
@@ -204,6 +210,10 @@ class ScreenCaptureService : Service() {
         if (selectionBoxView != null && selectionBoxView!!.parent != null) return
 
         selectionBoxView = LayoutInflater.from(this).inflate(R.layout.selection_box_layout, null)
+        
+        // Apply transparency to glass background
+        selectionBoxView!!.findViewById<View>(R.id.selection_box).background.alpha = transparency
+
         val params = WindowManager.LayoutParams(
             200, 200,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
@@ -323,7 +333,7 @@ class ScreenCaptureService : Service() {
                 bitmap.recycle(); updateResultUI("OCR Failed: ${e.message}"); isProcessing = false
             }
     }
-
+    
     private fun translateBasedOnProvider(text: String, sourceLang: String) {
         translateTextOnline(text, sourceLang, currentProvider)
     }
@@ -339,7 +349,10 @@ class ScreenCaptureService : Service() {
 
     private fun updateResultUI(result: String) {
         mainHandler.post {
-            bubbleView.findViewById<View>(R.id.result_container).visibility = View.VISIBLE
+            val resultContainer = bubbleView.findViewById<View>(R.id.result_container)
+            resultContainer.visibility = View.VISIBLE
+            // Apply transparency to result container background
+            resultContainer.background?.alpha = transparency
             bubbleView.findViewById<TextView>(R.id.txtResult).text = result
         }
     }
