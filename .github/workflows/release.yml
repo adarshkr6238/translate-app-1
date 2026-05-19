@@ -1,0 +1,39 @@
+name: Build and Release Signed APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Generate Release Keystore
+        run: |
+          keytool -genkey -v -keystore release.keystore -alias releaseKey -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Adarsh, OU=Dev, O=Adarsh, L=Unknown, S=Unknown, C=IN" \
+            -storepass password123 -keypass password123
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+
+      - name: Upload APK to Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: app/build/outputs/apk/release/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

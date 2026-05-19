@@ -19,8 +19,7 @@ android {
 
     signingConfigs {
         release {
-            signingConfig signingConfigs.release
-            storeFile file("/home/codespace/release.keystore")
+            storeFile file("../release.keystore")
             storePassword "password123"
             keyAlias "releaseKey"
             keyPassword "password123"
