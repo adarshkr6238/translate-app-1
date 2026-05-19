@@ -11,9 +11,10 @@ android {
         applicationId "com.example.translator"
         minSdk 24
         targetSdk 34
-        versionCode 6
-        versionName "3.0.1"
+        versionCode 7
+        versionName "3.2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        resConfigs "en"
     }
 
     signingConfigs {
@@ -59,7 +60,6 @@ dependencies {
 
     // ML Kit Dependencies (Unbundled)
     implementation 'com.google.android.gms:play-services-mlkit-text-recognition:19.0.0'
-    implementation 'com.google.android.gms:play-services-mlkit-language-id:17.0.0'
 
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }

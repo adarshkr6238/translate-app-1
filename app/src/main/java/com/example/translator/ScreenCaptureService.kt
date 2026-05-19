@@ -50,11 +50,10 @@ class ScreenCaptureService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    private val languageIdentifier = LanguageIdentification.getClient()
     private val multiTranslationService = MultiTranslationService()
     
     private var currentProvider = TranslationProvider.GOOGLE_FREE
-    private var sourceLangSetting = "Auto"
+    private var sourceLangSetting = "auto"
     private var targetLangSetting = "en"
     private var regionMode = false
     private var isProcessing = false
@@ -80,10 +79,11 @@ class ScreenCaptureService : Service() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val provStr = prefs.getString("provider", "GOOGLE_FREE") ?: "GOOGLE_FREE"
         currentProvider = try { TranslationProvider.valueOf(provStr) } catch(e:Exception){ TranslationProvider.GOOGLE_FREE }
-        sourceLangSetting = prefs.getString("sourceLang", "Auto") ?: "Auto"
+        sourceLangSetting = prefs.getString("sourceLang", "auto") ?: "auto"
         targetLangSetting = prefs.getString("targetLang", "en") ?: "en"
         regionMode = prefs.getBoolean("regionMode", false)
     }
+
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val resultCode = intent?.getIntExtra("RESULT_CODE", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
@@ -314,11 +314,7 @@ class ScreenCaptureService : Service() {
                 bitmap.recycle()
                 val text = visionText.textBlocks.joinToString("\n") { it.text }
                 if (text.isNotBlank()) {
-                    if (sourceLangSetting != "Auto") {
-                        translateBasedOnProvider(text, sourceLangSetting)
-                    } else {
-                        identifyLanguage(text)
-                    }
+                    translateBasedOnProvider(text, sourceLangSetting)
                 } else {
                     updateResultUI("No text found.")
                     isProcessing = false
@@ -329,22 +325,6 @@ class ScreenCaptureService : Service() {
             }
     }
 
-    private fun identifyLanguage(text: String) {
-        updateResultUI("Identifying Language...")
-        languageIdentifier.identifyLanguage(text)
-            .addOnSuccessListener { languageCode ->
-                if (languageCode != "und") {
-                    translateBasedOnProvider(text, languageCode)
-                } else {
-                    updateResultUI("Language unknown. Try forcing Source Lang.")
-                    isProcessing = false
-                }
-            }
-            .addOnFailureListener { e ->
-                updateResultUI("LangID Failed: ${e.message}"); isProcessing = false
-            }
-    }
-    
     private fun translateBasedOnProvider(text: String, sourceLang: String) {
         translateTextOnline(text, sourceLang, currentProvider)
     }
@@ -368,7 +348,7 @@ class ScreenCaptureService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         serviceScope.cancel(); virtualDisplay?.release(); mediaProjection?.stop()
-        textRecognizer.close(); languageIdentifier.close()
+        textRecognizer.close()
         if (::bubbleView.isInitialized) windowManager.removeView(bubbleView)
         if (selectionBoxView != null) windowManager.removeView(selectionBoxView)
     }

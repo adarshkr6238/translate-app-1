@@ -64,8 +64,9 @@ class MultiTranslationService {
     }
 
     private fun translateMyMemory(text: String, from: String, to: String): String {
+        val src = if (from.equals("auto", true)) "Autodetect" else from
         val encodedText = URLEncoder.encode(text, "UTF-8")
-        val url = URL("https://api.mymemory.translated.net/get?q=$encodedText&langpair=$from|$to")
+        val url = URL("https://api.mymemory.translated.net/get?q=$encodedText&langpair=$src|$to")
         return makeGetRequest(url) { json ->
             json.getJSONObject("responseData").getString("translatedText")
         }
