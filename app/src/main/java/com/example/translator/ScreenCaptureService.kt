@@ -134,6 +134,8 @@ class ScreenCaptureService : Service() {
     }
 
     private fun setupFloatingBubble() {
+        if (::bubbleView.isInitialized && bubbleView.parent != null) return
+
         bubbleView = LayoutInflater.from(this).inflate(R.layout.bubble_layout, null)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
@@ -172,18 +174,24 @@ class ScreenCaptureService : Service() {
         })
 
         bubbleView.setOnClickListener {
-            val txtResult = bubbleView.findViewById<TextView>(R.id.txtResult)
-            if (txtResult.visibility == View.VISIBLE) {
-                txtResult.visibility = View.GONE
-                txtResult.text = ""
+            val resultContainer = bubbleView.findViewById<View>(R.id.result_container)
+            if (resultContainer.visibility == View.VISIBLE) {
+                // Do nothing, let close button handle it
             } else {
                 if (!isProcessing) captureScreen()
             }
+        }
+
+        bubbleView.findViewById<View>(R.id.btn_close_result).setOnClickListener {
+            bubbleView.findViewById<View>(R.id.result_container).visibility = View.GONE
+            bubbleView.findViewById<TextView>(R.id.txtResult).text = ""
         }
         windowManager.addView(bubbleView, params)
     }
 
     private fun setupSelectionBox() {
+        if (selectionBoxView != null && selectionBoxView!!.parent != null) return
+
         selectionBoxView = LayoutInflater.from(this).inflate(R.layout.selection_box_layout, null)
         val params = WindowManager.LayoutParams(
             200, 200,
@@ -196,6 +204,18 @@ class ScreenCaptureService : Service() {
 
         val selectionBox = selectionBoxView!!.findViewById<View>(R.id.selection_box)
         val resizeHandle = selectionBoxView!!.findViewById<View>(R.id.resize_handle)
+        val closeButton = selectionBoxView!!.findViewById<View>(R.id.btn_close_region)
+
+        closeButton.setOnClickListener {
+            regionMode = false
+            PreferenceManager.getDefaultSharedPreferences(this).edit().putBoolean("regionMode", false).apply()
+            if (selectionBoxView != null && selectionBoxView!!.parent != null) {
+                windowManager.removeView(selectionBoxView)
+            }
+            selectionBoxView = null
+            // Update notification to reflect change
+            startForeground(1, createNotification())
+        }
 
         selectionBox.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0; private var initialY = 0
@@ -358,10 +378,8 @@ class ScreenCaptureService : Service() {
 
     private fun updateResultUI(result: String) {
         mainHandler.post {
-            bubbleView.findViewById<TextView>(R.id.txtResult).apply {
-                visibility = View.VISIBLE
-                text = result
-            }
+            bubbleView.findViewById<View>(R.id.result_container).visibility = View.VISIBLE
+            bubbleView.findViewById<TextView>(R.id.txtResult).text = result
         }
     }
 

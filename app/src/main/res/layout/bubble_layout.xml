@@ -15,16 +15,34 @@
         android:elevation="4dp"
         android:contentDescription="Translator Bubble" />
 
-    <TextView
-        android:id="@+id/txtResult"
+    <RelativeLayout
+        android:id="@+id/result_container"
         android:layout_width="250dp"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:background="@color/bubble_bg"
-        android:padding="8dp"
-        android:text=""
-        android:textColor="@color/on_primary"
         android:visibility="gone"
-        android:elevation="6dp" />
+        android:elevation="6dp">
+
+        <TextView
+            android:id="@+id/txtResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@color/bubble_bg"
+            android:padding="8dp"
+            android:paddingTop="20dp"
+            android:text=""
+            android:textColor="@color/on_primary" />
+
+        <ImageView
+            android:id="@+id/btn_close_result"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentRight="true"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:background="#80FF0000"
+            android:padding="4dp"
+            android:contentDescription="Close Result" />
+    </RelativeLayout>
 
 </FrameLayout>
